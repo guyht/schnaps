@@ -1,6 +1,7 @@
 [schnapps]
 aws_key             = 'your_aws_api_key'
 aws_secret_key      = 'your_aws_secret_key'
+vol_id              = 'volume_id'
 lock_mysql_db       = 'true|false'
 db_server           = 'dbhost'
 db_username         = 'dbname'
