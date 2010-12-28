@@ -1,0 +1,10 @@
+[nash]
+
+aws_key             = 'your_aws_api_key'
+aws_secret_key      = 'your_aws_secret_key'
+lock_mysql_db       = 'true|false'
+db_server           = 'dbhost'
+db_username         = 'dbname'
+db_password         = 'dbpassword'
+lock_xfs_filesystem = 'true|false'
+xfs_mountpoint      = 'mount_point_for_xfs_filesystem'
