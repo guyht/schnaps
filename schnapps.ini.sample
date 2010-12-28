@@ -1,5 +1,4 @@
-[nash]
-
+[schnapps]
 aws_key             = 'your_aws_api_key'
 aws_secret_key      = 'your_aws_secret_key'
 lock_mysql_db       = 'true|false'
