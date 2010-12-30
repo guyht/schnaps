@@ -9,10 +9,19 @@
 $path = dirname(__FILE__);
 $config_file = 'schnaps.ini';
 
+// Determine year, month, day and hour
+$year       = date('Y');
+$month      = date('m');
+$day        = date('d');
+$hour       = date('H');
+
 // Load logger
 require('logger.php');
 $logger = new GhtLib\Logger('schnaps.log');
 $logger->init();
+
+// Load AWS SDK
+require_once dirname(__FILE__).'/aws-sdk-for-php/sdk.class.php';
 
 $logger->log('Schnaps started');
 
@@ -44,6 +53,11 @@ if ($config['lock_xfs_filesystem'] == 'true') {
 }
 // ... Initiate snapshot
 $logger->log('Initiating snapshot', 'i', false);
+$snap_name = 'schnaps-backup-'.$config['vol_id'].'-'.$year.'-'.$month.'-'.$day.'-'.$hour;
+$ec2 = new AmazonEC2($config['aws_key'], $config['aws_secret_key']);
+$resp = $ec2->create_snapshot($config['vol_id'], $snap_name);
+$logger->log('Created snapshot with description: '.$snap_name, 'i', false);
+echo $resp->body->toXML();
 
 // Unfreeze filesystem
 if ($config['lock_xfs_filesystem'] == 'true') {
