@@ -53,11 +53,29 @@ if ($config['lock_xfs_filesystem'] == 'true') {
 }
 // ... Initiate snapshot
 $logger->log('Initiating snapshot', 'i', false);
-$snap_name = 'schnaps-backup-'.$config['vol_id'].'-'.$year.'-'.$month.'-'.$day.'-'.$hour;
+
+// Build snapshot name
+$snap_name = 'schnaps-backup-'.($day == $config['month_day'] ? 'perm-' : '').$config['vol_id'].'-'.$year.'-'.$month.'-'.$day.'-'.$hour;
+
+// Initiate ec2 object and make request to create snapshot
 $ec2 = new AmazonEC2($config['aws_key'], $config['aws_secret_key']);
 $resp = $ec2->create_snapshot($config['vol_id'], $snap_name);
-$logger->log('Created snapshot with description: '.$snap_name, 'i', false);
-echo $resp->body->toXML();
+if ($resp->isOK()) {
+	$logger->log('Created snapshot with description: '.$snap_name, 'i', false);
+} else {
+	$logger->log('Failed to create snapshot with description: '.$snap_name, 'e', false);
+}
+
+// Retrieve snapshot id
+$snap_id = $resp->body->snapshotId;
+$logger->log('Snapshot id is: '.$snap_id, 'i', false);
+
+// Add tag
+$logger->log('Tagging snapshot', 'i', false);
+$ec2->create_tags($snap_id, array(
+								array('Key' => 'schnaps_backup', 'Value' => 'true'),
+								array('Key' => 'protected', 'Value' => ($day == $config['month_day'] ? 'true' : 'false')),
+							));
 
 // Unfreeze filesystem
 if ($config['lock_xfs_filesystem'] == 'true') {
@@ -73,5 +91,53 @@ if ($config['lock_mysql_db'] == 'true') {
 	}
 	$logger->log('Unlocked mysql db');
 }
+
+// The first part of the script is complete, now its time to delete snapshots older than x days
+$logger->log('Describing snapshots');
+$resp = $ec2->describe_snapshots(array('Owner' => 'self', 'Filter' => array(
+									array('Name' => 'tag:schnaps_backup', 'Value' => 'true'),
+									array('Name' => 'tag:protected', 'Value' => 'false'))));
+$resp_perm = $ec2->describe_snapshots(array('Owner' => 'self', 'Filter' => array(
+									array('Name' => 'tag:schnaps_backup', 'Value' => 'true'),
+									array('Name' => 'tag:protected', 'Value' => 'true'))));
+$items = $resp->body->snapshotSet->item;
+$items_perm = $resp_perm->body->snapshotSet->item;
+$delete_before = time() - ($config['delete_older_than']*24*60*60);
+$logger->log('Will attempt do delete snapshots older than '.date('Y-m-d', $delete_before));
+
+foreach ($items as $snapshot) {
+	$logger->log('Found snapshot '.$snapshot->description);
+	$regex = "/schnaps-backup-(?:perm-)?vol-([0-9a-zA-Z]+)-([0-9]{4})-([0-9]{2})-([0-9]{2})-([0-9]{2})/";
+	$match = array();
+	preg_match_all($regex, $snapshot->description, $match);
+	$sy = $match[2][0];
+	$sm = $match[3][0];
+	$sd = $match[4][0];
+	$stamp = mktime(0, 0, 0, $sm, $sd, $sy);
+	$logger->log('Snapshot was created at '.date('Y-m-d', $stamp));
+	if ($stamp < $delete_before) {
+		$logger->log('Attempting to delete snapshot');
+		$logger->log('Checking newer permanent snapshot exists');
+		$found = false;
+		foreach ($items_perm as $snapshot_perm) {
+			$match = array();
+			preg_match_all($regex, $snapshot_perm->description, $match);
+			$sy = $match[2][0];
+			$sm = $match[3][0];
+			$sd = $match[4][0];
+			$stamp_perm = mktime(0, 0, 0, $sm, $sd, $sy);
+			if ($stamp_perm >= $stamp) {
+				$found = true;
+			}
+		}
+		if ($found) {
+			$logger->log('Found newer permanent snapshot, deleting snapshot '.$snapshot->description);
+			$ec2->delete_snapshot($snapshot->snapshotId);
+		} else {
+			$logger->log('Could not delete snapshot as no newer permanent snapshot exists.  This is most likely caused by an error.', 'e');
+		}
+	}
+}
+
 
 $logger->log('Schnaps finished');

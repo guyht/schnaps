@@ -4,7 +4,7 @@ namespace GhtLib;
 
 class Logger {
 
-	private $dateformat = "Y-m-d-h";
+	private $dateformat = "Y-m-d h:m:s";
 	private $filename = "log.txt";
 	private $path;
 	private $handle;	
